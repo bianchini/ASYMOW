@@ -198,7 +198,7 @@ def make_tree(tag=''):
     tree.Branch("dxdzerr", dxdzerr, "dxdzerr/F")
     tree.Branch("dydz", dydz, "dydz/F")
     tree.Branch("dydzerr", dydzerr, "dydzerr/F")
-
+ 
     ls_file = open('summary_final'+tag+'.csv', 'r')
     ls_lines = [ x.strip() for x in ls_file.readlines() ]
     for l in ls_lines:
@@ -239,6 +239,60 @@ def make_tree_avg(tag=''):
     f.Close()
     return
 
+def make_pdfs(tag=''):
+    print 'make_pdfs()...'
+
+    zbins, zmin, zmax = 20, -15., 15.
+
+    mc = ROOT.TFile('~/NanoAOD.root','READ')
+    tmc = mc.Get('demo/Events')
+    hmc = ROOT.TH1F('mc_vtxZ','', zbins, zmin, zmax)
+    tmc.Draw('GenVertex_z>>mc_vtxZ') 
+    hmc.Scale(1./hmc.Integral())
+
+    f = ROOT.TFile('out'+tag+'.root','READ')
+    tree = f.Get('tree')
+
+    hdict = {}
+    keys = ['5_15','15_25', '25_35', '35_45']
+    for k in keys:
+        hdict[k] = ROOT.TH1F('vtxZ_'+k,k+';vtx_z;pdf',zbins, zmin,zmax)
+
+    dL = np.empty((1), dtype="float32")
+    avg = np.empty((1), dtype="float32")
+    Z0 = np.empty((1), dtype="float32")
+    sZ0 = np.empty((1), dtype="float32")
+    tree.SetBranchAddress('dL', dL)
+    tree.SetBranchAddress('avg', avg)
+    tree.SetBranchAddress('Z0', Z0)
+    tree.SetBranchAddress('sZ0', sZ0)
+    for i in range(0, tree.GetEntries()):
+        tree.GetEntry(i)
+        for k,v in hdict.items():
+            for b in range(1, v.GetNbinsX()+1):
+                z = v.GetBinCenter(b)
+                val = ROOT.TMath.Gaus(z, Z0[0], sZ0[0], True )
+                avg_min, avg_max = float(k.split('_')[0]),float(k.split('_')[1]) 
+                if avg[0]>=avg_min and avg[0]<avg_max:
+                    v.Fill( z, val*dL[0] )
+
+    for k,v in hdict.items():
+        norm = v.Integral()
+        v.Scale(1./norm)
+      
+    fout = ROOT.TFile('ratio.root', 'RECREATE')
+    fout.cd()
+    hratiodict = {}
+    for k,v in hdict.items():
+        hratiodict[k] = v.Clone('ratio_'+k)        
+        for b in range(1, v.GetNbinsX()+1):
+            hratiodict[k].SetBinContent(b, hmc.GetBinContent(b)/v.GetBinContent(b) if v.GetBinContent(b)>0. else 1.0)    
+    for k,v in hratiodict.items():
+        v.Write()
+    fout.Close()
+    #raw_input()
+
+
 tag = '_69200ub'
 
 if reduceB:
@@ -253,6 +307,7 @@ if makeTree:
     make_tree(tag)
 
 #check()
-make_tree_avg(tag)
+#make_tree_avg(tag)
+make_pdfs(tag)
 
 #make_tree(firstLS, lastLS)
