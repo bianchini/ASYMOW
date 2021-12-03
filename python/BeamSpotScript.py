@@ -18,7 +18,8 @@ root[1] cond::time::pack({284044, 30})
 # Produce a brilcalc output file containing a summary of lumi and avg pileup LS-by-LS:
 > setenv PATH $HOME/.local/bin:/cvmfs/cms-bril.cern.ch/brilconda/bin:$PATH
 > pip install --user --upgrade brilws
-> ~/.local/bin/brilcalc lumi --normtag /cvmfs/cms-bril.cern.ch/cms-lumi-pog/Normtags/normtag_PHYSICS.json -u /fb -i /afs/cern.ch/cms/CAF/CMSCOMM/COMM_DQM/certification/Collisions16/13TeV/Legacy_2016/Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt --byls --minBiasXsec 69200 > 2016_brilcalc_byls_69200ub.txt
+> ~/.local/bin/brilcalc lumi --normtag /cvmfs/cms-bril.cern.ch/cms-lumi-pog/Normtags/normtag_PHYSICS.json -u /fb -i /afs/cern.ch/cms/CAF/CMSCOMM/COMM_DQM/certification/Collisions16/13TeV/Legacy_2016/Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt --byls --minBiasXsec 69200  --xing --xingTr 0.1 > 2016_brilcalc_byls_69200ub.txt
+# FIXME: brilcalc supports the -o option to output a csv file directly
 '''
 
 parser = argparse.ArgumentParser("")
@@ -242,9 +243,9 @@ def make_tree_avg(tag=''):
 def make_pdfs(tag=''):
     print 'make_pdfs()...'
 
-    zbins, zmin, zmax = 20, -15., 15.
+    zbins, zmin, zmax = 11, -15., 15.
 
-    mc = ROOT.TFile('~/NanoAOD.root','READ')
+    mc = ROOT.TFile('./NanoAOD.root','READ')
     tmc = mc.Get('demo/Events')
     hmc = ROOT.TH1F('mc_vtxZ','', zbins, zmin, zmax)
     tmc.Draw('GenVertex_z>>mc_vtxZ') 
@@ -254,7 +255,7 @@ def make_pdfs(tag=''):
     tree = f.Get('tree')
 
     hdict = {}
-    keys = ['5_15','15_25', '25_35', '35_45']
+    keys = ['0_50', '5_10', '10_15', '15_20', '20_25',  '25_30', '30_35', '35_40', '40_45']
     for k in keys:
         hdict[k] = ROOT.TH1F('vtxZ_'+k,k+';vtx_z;pdf',zbins, zmin,zmax)
 
@@ -280,17 +281,54 @@ def make_pdfs(tag=''):
         norm = v.Integral()
         v.Scale(1./norm)
       
-    fout = ROOT.TFile('ratio.root', 'RECREATE')
+    fout = ROOT.TFile('ratio'+tag+'.root', 'RECREATE')
     fout.cd()
     hratiodict = {}
     for k,v in hdict.items():
         hratiodict[k] = v.Clone('ratio_'+k)        
         for b in range(1, v.GetNbinsX()+1):
-            hratiodict[k].SetBinContent(b, hmc.GetBinContent(b)/v.GetBinContent(b) if v.GetBinContent(b)>0. else 1.0)    
+            hratiodict[k].SetBinContent(b, v.GetBinContent(b)/hmc.GetBinContent(b) if hmc.GetBinContent(b)>0. else 1.0)    
     for k,v in hratiodict.items():
         v.Write()
     fout.Close()
-    #raw_input()
+
+def plot(tag):    
+    from ROOT import kRed, kDashed
+
+    print 'plot()...'
+    fin = ROOT.TFile('ratio'+tag+'.root', 'READ')
+    keys = ['0_50', '5_10', '10_15', '15_20', '20_25',  '25_30', '30_35', '35_40', '40_45']
+    c = ROOT.TCanvas()
+    leg = ROOT.TLegend(0.7,0.5,0.9,0.9)
+    leg.SetHeader('Average pileup')
+    h0 = None
+    for ik,k in enumerate(keys):
+        h = fin.Get('ratio_'+k)
+        h.SetLineColor(ik+1)
+        h.SetLineWidth(2)
+        h.SetStats(0)
+        leg.AddEntry(h, '['+k.split('_')[0]+', '+k.split('_')[1]+')', "L")
+        if ik==0: 
+            h0 = h
+            h.SetLineWidth(4)
+            h.SetLineStyle(kDashed)
+            h.SetMaximum(2.0)
+            h.SetMinimum(0.0)
+            h.SetTitle("")
+            h.GetXaxis().SetTitle("Z_{vtx} [cm]")
+            h.GetXaxis().SetTitleSize(0.05)            
+            h.GetYaxis().SetTitleSize(0.05)            
+            h.GetXaxis().SetTitleOffset(0.9)
+            h.GetYaxis().SetTitle("Data/MC")
+            h.Draw("HIST")
+        else: 
+            h.Draw("HISTSAME")
+    h0.Draw("SAME")
+    c.Update()
+    leg.Draw()
+    c.Draw()
+    c.SaveAs('ratioVsPU'+tag+'.png')
+    raw_input()
 
 
 tag = '_69200ub'
@@ -308,6 +346,7 @@ if makeTree:
 
 #check()
 #make_tree_avg(tag)
-make_pdfs(tag)
+#make_pdfs(tag)
+plot(tag)
 
 #make_tree(firstLS, lastLS)
