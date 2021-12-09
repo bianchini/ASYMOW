@@ -4,6 +4,7 @@ import re
 import argparse
 import numpy as np
 import csv
+import math
 
 '''
 # Dump BeamSpot infos from DB:
@@ -243,12 +244,18 @@ def make_tree_avg(tag=''):
 def make_pdfs(tag=''):
     print 'make_pdfs()...'
 
-    zbins, zmin, zmax = 11, -15., 15.
+    zbins, zmin, zmax = 55, -15., 15.
 
     mc = ROOT.TFile('./NanoAOD.root','READ')
     tmc = mc.Get('demo/Events')
     hmc = ROOT.TH1F('mc_vtxZ','', zbins, zmin, zmax)
     tmc.Draw('GenVertex_z>>mc_vtxZ') 
+    fitmc = ROOT.TF1('fitmc', '[0]/TMath::Sqrt(2*TMath::Pi())/[1]*TMath::Exp( -0.5*(x-[2])*(x-[2])/[1]/[1] )', zmin, zmax)    
+    fitmc.SetParameter(0, hmc.Integral())
+    fitmc.SetParameter(1, hmc.GetRMS())
+    fitmc.SetParameter(2, hmc.GetMean())
+    hmc.Fit(fitmc, 'R')
+    fitmc.SetParameter(0, 1.0)
     hmc.Scale(1./hmc.Integral())
 
     f = ROOT.TFile('out'+tag+'.root','READ')
@@ -278,18 +285,22 @@ def make_pdfs(tag=''):
                     v.Fill( z, val*dL[0] )
 
     for k,v in hdict.items():
-        norm = v.Integral()
+        norm = v.Integral('width')
         v.Scale(1./norm)
       
     fout = ROOT.TFile('ratio'+tag+'.root', 'RECREATE')
     fout.cd()
     hratiodict = {}
     for k,v in hdict.items():
+        v.Write()
         hratiodict[k] = v.Clone('ratio_'+k)        
         for b in range(1, v.GetNbinsX()+1):
-            hratiodict[k].SetBinContent(b, v.GetBinContent(b)/hmc.GetBinContent(b) if hmc.GetBinContent(b)>0. else 1.0)    
+            #hratiodict[k].SetBinContent(b, v.GetBinContent(b)/hmc.GetBinContent(b) if hmc.GetBinContent(b)>0. else 1.0)    
+            vmc = fitmc.Eval(v.GetBinCenter(b))
+            hratiodict[k].SetBinContent(b, v.GetBinContent(b)/vmc if vmc>0. else 1.0)    
     for k,v in hratiodict.items():
         v.Write()
+    hmc.Write()
     fout.Close()
 
 def plot(tag):    
@@ -301,13 +312,22 @@ def plot(tag):
     c = ROOT.TCanvas()
     leg = ROOT.TLegend(0.7,0.5,0.9,0.9)
     leg.SetHeader('Average pileup')
+    hmc = fin.Get('mc_vtxZ')
     h0 = None
     for ik,k in enumerate(keys):
         h = fin.Get('ratio_'+k)
+        # compute mean and RMS of weight
+        mu,rms = 0., 0.        
+        for ib in range(1, hmc.GetNbinsX()+1):            
+            mu += h.GetBinContent(ib)*hmc.GetBinContent(ib)
+        for ib in range(1, hmc.GetNbinsX()+1):            
+            rms += ((h.GetBinContent(ib)-mu)**2)*hmc.GetBinContent(ib)          
+        print mu, math.sqrt(rms)
+        
         h.SetLineColor(ik+1)
         h.SetLineWidth(2)
         h.SetStats(0)
-        leg.AddEntry(h, '['+k.split('_')[0]+', '+k.split('_')[1]+')', "L")
+        leg.AddEntry(h, '['+k.split('_')[0]+', '+k.split('_')[1]+') RMS='+'{:2f}'.format(math.sqrt(rms)), "L")
         if ik==0: 
             h0 = h
             h.SetLineWidth(4)
@@ -346,7 +366,7 @@ if makeTree:
 
 #check()
 #make_tree_avg(tag)
-#make_pdfs(tag)
-plot(tag)
+make_pdfs(tag)
+#plot(tag)
 
 #make_tree(firstLS, lastLS)
