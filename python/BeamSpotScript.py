@@ -19,7 +19,7 @@ root[1] cond::time::pack({284044, 30})
 # Produce a brilcalc output file containing a summary of lumi and avg pileup LS-by-LS:
 > setenv PATH $HOME/.local/bin:/cvmfs/cms-bril.cern.ch/brilconda/bin:$PATH
 > pip install --user --upgrade brilws
-> ~/.local/bin/brilcalc lumi --normtag /cvmfs/cms-bril.cern.ch/cms-lumi-pog/Normtags/normtag_PHYSICS.json -u /fb -i /afs/cern.ch/cms/CAF/CMSCOMM/COMM_DQM/certification/Collisions16/13TeV/Legacy_2016/Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt --byls --minBiasXsec 69200  --xing --xingTr 0.1 > 2016_brilcalc_byls_69200ub.txt
+> ~/.local/bin/brilcalc lumi --normtag /cvmfs/cms-bril.cern.ch/cms-lumi-pog/Normtags/normtag_PHYSICS.json -u /fb -i /afs/cern.ch/cms/CAF/CMSCOMM/COMM_DQM/certification/Collisions16/13TeV/Legacy_2016/Cert_271036-284044_13TeV_Legacy2016_Collisions16_JSON.txt --byls --minBiasXsec 69200 --xingTr 0.1 > 2016_brilcalc_byls_69200ub.txt
 # FIXME: brilcalc supports the -o option to output a csv file directly
 '''
 
@@ -58,7 +58,7 @@ def reduce_brilcalc(tag=''):
 def reduce_summary():
     print 'reduce_summary()...'
     fout = open('summary_reduced.csv', 'w')
-    bs_file = open('summary.txt', 'r')
+    bs_file = open('summary_2016.txt', 'r')
     bs_lines = [ x.strip() for x in bs_file.readlines() ]
     for ib,b in enumerate(bs_lines):
         if 'hash' in b:
@@ -265,6 +265,9 @@ def make_pdfs(tag=''):
     keys = ['0_50', '5_10', '10_15', '15_20', '20_25',  '25_30', '30_35', '35_40', '40_45']
     for k in keys:
         hdict[k] = ROOT.TH1F('vtxZ_'+k,k+';vtx_z;pdf',zbins, zmin,zmax)
+    h2dict = {}
+    h2dict['sZ0_avg'] = ROOT.TH2F('sZ0_avg',';avg;sZ0', 7, 5, 40, 20, 3.0, 4.0)
+    h2dict['Z0_avg']  = ROOT.TH2F('Z0_avg', ';avg;Z0',  7, 5, 40, 20, -1.0, 1.0)
 
     dL = np.empty((1), dtype="float32")
     avg = np.empty((1), dtype="float32")
@@ -283,6 +286,8 @@ def make_pdfs(tag=''):
                 avg_min, avg_max = float(k.split('_')[0]),float(k.split('_')[1]) 
                 if avg[0]>=avg_min and avg[0]<avg_max:
                     v.Fill( z, val*dL[0] )
+        h2dict['sZ0_avg'].Fill(avg[0],sZ0[0],dL[0])
+        h2dict['Z0_avg'].Fill(avg[0], Z0[0],dL[0])
 
     for k,v in hdict.items():
         norm = v.Integral('width')
@@ -299,6 +304,8 @@ def make_pdfs(tag=''):
             vmc = fitmc.Eval(v.GetBinCenter(b))
             hratiodict[k].SetBinContent(b, v.GetBinContent(b)/vmc if vmc>0. else 1.0)    
     for k,v in hratiodict.items():
+        v.Write()
+    for k,v in h2dict.items():
         v.Write()
     hmc.Write()
     fout.Close()
@@ -317,17 +324,17 @@ def plot(tag):
     for ik,k in enumerate(keys):
         h = fin.Get('ratio_'+k)
         # compute mean and RMS of weight
-        mu,rms = 0., 0.        
+        mu,rms2 = 0., 0.        
         for ib in range(1, hmc.GetNbinsX()+1):            
             mu += h.GetBinContent(ib)*hmc.GetBinContent(ib)
         for ib in range(1, hmc.GetNbinsX()+1):            
-            rms += ((h.GetBinContent(ib)-mu)**2)*hmc.GetBinContent(ib)          
-        print mu, math.sqrt(rms)
+            rms2 += ((h.GetBinContent(ib)-mu)**2)*hmc.GetBinContent(ib)          
+        #print mu, math.sqrt(rms)
         
         h.SetLineColor(ik+1)
         h.SetLineWidth(2)
         h.SetStats(0)
-        leg.AddEntry(h, '['+k.split('_')[0]+', '+k.split('_')[1]+') RMS='+'{:2f}'.format(math.sqrt(rms)), "L")
+        leg.AddEntry(h, '['+k.split('_')[0]+', '+k.split('_')[1]+') #Delta='+'{:2f}'.format(rms2*0.5*100)+'%', "L")
         if ik==0: 
             h0 = h
             h.SetLineWidth(4)
