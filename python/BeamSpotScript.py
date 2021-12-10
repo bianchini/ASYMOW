@@ -6,6 +6,7 @@ import numpy as np
 import csv
 import math
 
+
 '''
 # Dump BeamSpot infos from DB:
 > wget https://raw.githubusercontent.com/cms-sw/cmssw/master/CondTools/BeamSpot/test/BeamSpotRcdPrinter_cfg.py .
@@ -24,40 +25,39 @@ root[1] cond::time::pack({284044, 30})
 '''
 
 parser = argparse.ArgumentParser("")
-parser.add_argument('-rB', '--reduceBrilCalc', action='store_true', default=False, help="")
+parser.add_argument('-e', '--era', type=str, default='2016', help="")
+parser.add_argument('-t', '--tag', type=str, default='69200ub', help="")
 parser.add_argument('-rS', '--reduceSummary',  action='store_true', default=False, help="")
+parser.add_argument('-rB', '--reduceBrilCalc', action='store_true', default=False, help="")
 parser.add_argument('-rM', '--reduceMatch',    action='store_true', default=False, help="")
 parser.add_argument('-rF', '--reduceFinal',    action='store_true', default=False, help="")
-parser.add_argument('-t', '--tree', action='store_true', default=False, help="")
+parser.add_argument('-mT', '--makeTree', action='store_true', default=False, help="")
+parser.add_argument('-mP', '--makePdf', action='store_true', default=False, help="")
+parser.add_argument('-mPP','--makePlot', action='store_true', default=False, help="")
+parser.add_argument('-mPP2','--makePlot2', action='store_true', default=False, help="")
 args = parser.parse_args()
-reduceB = args.reduceBrilCalc
+era = args.era
+tag = '_'+args.tag
 reduceS = args.reduceSummary
+reduceB = args.reduceBrilCalc
 reduceM = args.reduceMatch
 reduceF = args.reduceFinal
-makeTree = args.tree
+makeTree= args.makeTree
+makePdf= args.makePdf
+makePlot= args.makePlot
+makePlot2= args.makePlot2
 
-def reduce_brilcalc(tag=''):
-    print 'reduce_brilcalc()...'
-    fout = open('2016_brilcalc_byls_reduced'+tag+'.csv', 'w')
-    ls_file = open('2016_brilcalc_byls'+tag+'.txt', 'r')
-    ls_lines = [ x.strip() for x in ls_file.readlines()]
-    for l in ls_lines:
-        #print l
-        if '|' not in l: continue
-        if 'STABLE' not in l: continue
-        l2 = l.split('|')
-        run  = l2[1].rstrip().lstrip().split(':')[0]
-        ls   = l2[2].rstrip().lstrip().split(':')[0]
-        lumi = l2[7].rstrip().lstrip()
-        avg  = l2[8].rstrip().lstrip()
-        #print('('+run+','+ls+') '+lumi)
-        fout.write(run+','+ls+','+lumi+','+avg+'\n')
-    fout.close()
-    return
+#tag = '_69200ub'
+#tag = '_72400ub'
+#tag = '_66000ub'
+
+Run2016F_nonHIPM = ['278769', '278801', '278802', '278803', '278804', '278805', '278808']
+Run2016G_first   = ['278820']
+
 
 def reduce_summary():
     print 'reduce_summary()...'
-    fout = open('summary_reduced.csv', 'w')
+    fout = open('summary_2016_reduced.csv', 'w')
     bs_file = open('summary_2016.txt', 'r')
     bs_lines = [ x.strip() for x in bs_file.readlines() ]
     for ib,b in enumerate(bs_lines):
@@ -76,9 +76,38 @@ def reduce_summary():
     fout.close()
     return
 
-def reduce_match(tag=''):
+def check_era(run,era):
+    is_postVFP = (int(run)>=int(Run2016G_first[0]) or (run in Run2016F_nonHIPM))
+    if era=='2016': 
+        return True
+    elif era=='2016preVFP' and is_postVFP: return False
+    elif era=='2016postVFP' and not is_postVFP: return False
+    return True
+
+def reduce_brilcalc(tag='', era=''):
+    print 'reduce_brilcalc()...'
+    fout = open(era+'_brilcalc_byls_reduced'+tag+'.csv', 'w')
+    ls_file = open('2016_brilcalc_byls'+tag+'.txt', 'r')
+    ls_lines = [ x.strip() for x in ls_file.readlines()]
+    for l in ls_lines:
+        #print l
+        if '|' not in l: continue
+        if 'STABLE' not in l: continue
+        l2 = l.split('|')
+        run  = l2[1].rstrip().lstrip().split(':')[0]
+        ls   = l2[2].rstrip().lstrip().split(':')[0]
+        lumi = l2[7].rstrip().lstrip()
+        avg  = l2[8].rstrip().lstrip()
+        #print('('+run+','+ls+') '+lumi)
+        if(check_era( run, era)):
+            fout.write(run+','+ls+','+lumi+','+avg+'\n')
+    fout.close()
+    return
+
+
+def reduce_match(tag='',era=''):
     print 'reduce_match()...'
-    with open('summary_reduced.csv', 'rb') as master:
+    with open('summary_2016_reduced.csv', 'rb') as master:
         master_indices = dict( (r[0]+'_'+r[1], [ r[2],r[3],   #X0
                                                  r[4],r[5],   #Y0
                                                  r[6],r[7],   #Z0
@@ -86,8 +115,8 @@ def reduce_match(tag=''):
                                                  r[10],r[11], #dxdz
                                                  r[12],r[13]  #dydz                                             
                                              ] ) for i,r in enumerate(csv.reader(master)))
-    with open('2016_brilcalc_byls_reduced'+tag+'.csv', 'rb') as hosts:
-        with open('2016_brilcalc_byls_matched'+tag+'.csv', 'wb') as results:
+    with open(era+'_brilcalc_byls_reduced'+tag+'.csv', 'rb') as hosts:
+        with open(era+'_brilcalc_byls_matched'+tag+'.csv', 'wb') as results:
             reader = csv.reader(hosts)
             writer = csv.writer(results)
             for row in reader:
@@ -106,10 +135,10 @@ def reduce_match(tag=''):
                     writer.writerow(row)
     return
 
-def reduce_final(tag=''):
+def reduce_final(tag='',era=''):
     print 'reduce_final()...'
-    fout = open('summary_final'+tag+'.csv', 'w')
-    ls_file = open('2016_brilcalc_byls_matched'+tag+'.csv', 'r')
+    fout = open('summary_'+era+'_final'+tag+'.csv', 'w')
+    ls_file = open(era+'_brilcalc_byls_matched'+tag+'.csv', 'r')
     ls_lines = [ x.strip() for x in ls_file.readlines() ]
     n_ls_lines = len(ls_lines)
     Ltot = 0.
@@ -138,21 +167,21 @@ def reduce_final(tag=''):
             newline = ','.join(l_split)
             #print(newline)
             fout.write(newline+'\n')
-    print Ltot,'/fb in summary_final.csv'
+    print Ltot,'/fb in summary_'+era+'_final.csv'
     fout.close()
     return
 
 
-def check(tag=''):
-    ls_file = open('2016_brilcalc_byls_matched'+tag+'.csv', 'rb')
-    bs_file = open('summary_reduced.csv', 'rb')
+def check(tag='',era=''):
+    ls_file = open(era+'_brilcalc_byls_matched'+tag+'.csv', 'rb')
+    bs_file = open('summary_2016_reduced.csv', 'rb')
     ls_lines = [ x.strip() for x in ls_file.readlines() ]
     bs_lines = [ x.strip() for x in bs_file.readlines() ]
     unmatched = 0
     dL = 0.
     for l in ls_lines:
         dL += float(l.split(',')[2])
-    print "Total lumi in 2016_brilcalc_byls_matched.csv:", dL
+    print "Total lumi in "+era+"_brilcalc_byls_matched.csv:", dL
     for b in bs_lines:
         run,ls = b.split(',')[0], b.split(',')[1]
         match = False
@@ -167,9 +196,9 @@ def check(tag=''):
     print unmatched, 'unmatched'
     return
 
-def make_tree(tag=''):
+def make_tree(tag='',era=''):
     print 'make_tree()...'
-    f = ROOT.TFile('out'+tag+'.root','RECREATE')
+    f = ROOT.TFile('out_'+era+tag+'.root','RECREATE')
     tree = ROOT.TTree('tree', 'tree')
     dL = np.empty((1), dtype="float32")
     avg = np.empty((1), dtype="float32")
@@ -201,7 +230,7 @@ def make_tree(tag=''):
     tree.Branch("dydz", dydz, "dydz/F")
     tree.Branch("dydzerr", dydzerr, "dydzerr/F")
  
-    ls_file = open('summary_final'+tag+'.csv', 'r')
+    ls_file = open('summary_'+era+'_final'+tag+'.csv', 'r')
     ls_lines = [ x.strip() for x in ls_file.readlines() ]
     for l in ls_lines:
         dL[0] = l.split(',')[2]
@@ -223,15 +252,15 @@ def make_tree(tag=''):
     f.Close()
     return
 
-def make_tree_avg(tag=''):
+def make_tree_avg(tag='',era=''):
     print 'make_tree_avg()...'
-    f = ROOT.TFile('out_avg'+tag+'.root','RECREATE')
+    f = ROOT.TFile('out_'+era+'_avg'+tag+'.root','RECREATE')
     tree = ROOT.TTree('tree', 'tree')
     dL = np.empty((1), dtype="float32")
     avg = np.empty((1), dtype="float32")
     tree.Branch("dL", dL, "dL/F")
     tree.Branch("avg", avg, "avg/F")
-    ls_file = open('2016_brilcalc_byls_matched'+tag+'.csv', 'r')
+    ls_file = open(era+'_brilcalc_byls_matched'+tag+'.csv', 'r')
     ls_lines = [ x.strip() for x in ls_file.readlines() ]
     for l in ls_lines:
         dL[0] = l.split(',')[2]
@@ -241,7 +270,7 @@ def make_tree_avg(tag=''):
     f.Close()
     return
 
-def make_pdfs(tag=''):
+def make_pdfs(tag='',era=''):
     print 'make_pdfs()...'
 
     zbins, zmin, zmax = 55, -15., 15.
@@ -258,7 +287,7 @@ def make_pdfs(tag=''):
     fitmc.SetParameter(0, 1.0)
     hmc.Scale(1./hmc.Integral())
 
-    f = ROOT.TFile('out'+tag+'.root','READ')
+    f = ROOT.TFile('out_'+era+tag+'.root','READ')
     tree = f.Get('tree')
 
     hdict = {}
@@ -291,9 +320,10 @@ def make_pdfs(tag=''):
 
     for k,v in hdict.items():
         norm = v.Integral('width')
-        v.Scale(1./norm)
+        if norm>0.:
+            v.Scale(1./norm)
       
-    fout = ROOT.TFile('ratio'+tag+'.root', 'RECREATE')
+    fout = ROOT.TFile('ratio_'+era+tag+'.root', 'RECREATE')
     fout.cd()
     hratiodict = {}
     for k,v in hdict.items():
@@ -310,11 +340,11 @@ def make_pdfs(tag=''):
     hmc.Write()
     fout.Close()
 
-def plot(tag):    
-    from ROOT import kRed, kDashed
 
+def plot(tag,era=''):    
+    from ROOT import kRed, kDashed
     print 'plot()...'
-    fin = ROOT.TFile('ratio'+tag+'.root', 'READ')
+    fin = ROOT.TFile('ratio_'+era+tag+'.root', 'READ')
     keys = ['0_50', '5_10', '10_15', '15_20', '20_25',  '25_30', '30_35', '35_40', '40_45']
     c = ROOT.TCanvas()
     leg = ROOT.TLegend(0.7,0.5,0.9,0.9)
@@ -329,17 +359,17 @@ def plot(tag):
             mu += h.GetBinContent(ib)*hmc.GetBinContent(ib)
         for ib in range(1, hmc.GetNbinsX()+1):            
             rms2 += ((h.GetBinContent(ib)-mu)**2)*hmc.GetBinContent(ib)          
-        #print mu, math.sqrt(rms)
+        print mu, math.sqrt(rms2)
         
         h.SetLineColor(ik+1)
         h.SetLineWidth(2)
         h.SetStats(0)
-        leg.AddEntry(h, '['+k.split('_')[0]+', '+k.split('_')[1]+') #Delta='+'{:2f}'.format(rms2*0.5*100)+'%', "L")
+        leg.AddEntry(h, '['+k.split('_')[0]+', '+k.split('_')[1]+') #Delta='+'{:.1f}'.format(rms2*0.5*100)+'%', "L")
         if ik==0: 
             h0 = h
             h.SetLineWidth(4)
             h.SetLineStyle(kDashed)
-            h.SetMaximum(2.0)
+            h.SetMaximum(3.0)
             h.SetMinimum(0.0)
             h.SetTitle("")
             h.GetXaxis().SetTitle("Z_{vtx} [cm]")
@@ -350,30 +380,45 @@ def plot(tag):
             h.Draw("HIST")
         else: 
             h.Draw("HISTSAME")
+    h0.SetTitle(era)
     h0.Draw("SAME")
     c.Update()
     leg.Draw()
     c.Draw()
-    c.SaveAs('ratioVsPU'+tag+'.png')
-    raw_input()
+    c.SaveAs('ratioVsPU_'+era+tag+'.png')
+    #raw_input()
 
 
-tag = '_69200ub'
+def plot2D(tag,era=''):    
+    print 'plot2D()...'
+    fin = ROOT.TFile('ratio_'+era+tag+'.root', 'READ')
+    keys = ['sZ0_avg','Z0_avg']
+    c = ROOT.TCanvas()
+    for k in keys:
+        h2 = fin.Get(k)
+        h2.SetTitle(era)
+        c.cd()
+        h2.Draw('COLZ')
+        c.SaveAs(k+'_'+era+'.png')
+    fin.Close()
+    return
+    
 
-if reduceB:
-    reduce_brilcalc(tag)
 if reduceS:
     reduce_summary()
+if reduceB:
+    reduce_brilcalc(tag,era)
 if reduceM:
-    reduce_match(tag)
+    reduce_match(tag,era)
 if reduceF:
-    reduce_final(tag)
+    reduce_final(tag,era)
 if makeTree:
-    make_tree(tag)
-
+    make_tree(tag,era)
 #check()
-#make_tree_avg(tag)
-make_pdfs(tag)
-#plot(tag)
-
-#make_tree(firstLS, lastLS)
+#make_tree_avg(tag,era)
+if makePdf:
+    make_pdfs(tag,era)
+if makePlot:
+    plot(tag,era)
+if makePlot2:
+    plot2D(tag,era)
